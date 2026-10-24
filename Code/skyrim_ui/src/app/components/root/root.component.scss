@@ -89,6 +89,11 @@
       max-width: 30vw;
       min-width: 25vw;
     }
+
+    > app-popup[data-popup='music'] > app-window {
+      max-width: 45vw;
+      min-width: 32vw;
+    }
   }
 }
 

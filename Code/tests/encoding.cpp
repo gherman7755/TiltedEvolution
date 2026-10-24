@@ -659,6 +659,107 @@ TEST_CASE("Packets", "[encoding.packets]")
         REQUIRE(pMessage);
         REQUIRE(*CastUnique<AssignObjectsResponse>(std::move(pMessage)) == sendMessage);
     }
+
+    GIVEN("Music messages")
+    {
+        MusicTrackData track;
+        track.Id = 42;
+        track.VideoId = "dQw4w9WgXcQ";
+        track.Title = "Dragonborn (Песнь Довакина)";
+        track.Author = "Jeremy Soule";
+        track.DurationMs = 236123;
+        track.AddedByPlayerId = 3;
+        track.AddedByName = "Player";
+
+        Buffer buff(2000);
+
+        {
+            MusicTimeSyncRequest sendMessage;
+            sendMessage.ClientTimeMs = 1792519087123.456;
+
+            Buffer::Writer writer(&buff);
+            sendMessage.Serialize(writer);
+            Buffer::Reader reader(&buff);
+
+            const ClientMessageFactory factory;
+            auto pMessage = factory.Extract(reader);
+            REQUIRE(pMessage);
+            REQUIRE(*CastUnique<MusicTimeSyncRequest>(std::move(pMessage)) == sendMessage);
+        }
+
+        {
+            MusicCommandRequest sendMessage;
+            sendMessage.Command = MusicCommandRequest::kSeek;
+            sendMessage.TrackId = 42;
+            sendMessage.Value = 61250.5;
+            sendMessage.Track = track;
+
+            Buffer::Writer writer(&buff);
+            sendMessage.Serialize(writer);
+            Buffer::Reader reader(&buff);
+
+            const ClientMessageFactory factory;
+            auto pMessage = factory.Extract(reader);
+            REQUIRE(pMessage);
+            REQUIRE(*CastUnique<MusicCommandRequest>(std::move(pMessage)) == sendMessage);
+        }
+
+        {
+            MusicTrackStatusRequest sendMessage;
+            sendMessage.TrackId = 42;
+            sendMessage.Ready = true;
+            sendMessage.DurationMs = 236140;
+
+            Buffer::Writer writer(&buff);
+            sendMessage.Serialize(writer);
+            Buffer::Reader reader(&buff);
+
+            const ClientMessageFactory factory;
+            auto pMessage = factory.Extract(reader);
+            REQUIRE(pMessage);
+            REQUIRE(*CastUnique<MusicTrackStatusRequest>(std::move(pMessage)) == sendMessage);
+        }
+
+        {
+            MusicTimeSyncResponse sendMessage;
+            sendMessage.ClientTimeMs = 1792519087123.456;
+            sendMessage.ServerTimeMs = 3600123.789;
+
+            Buffer::Writer writer(&buff);
+            sendMessage.Serialize(writer);
+            Buffer::Reader reader(&buff);
+
+            const ServerMessageFactory factory;
+            auto pMessage = factory.Extract(reader);
+            REQUIRE(pMessage);
+            REQUIRE(*CastUnique<MusicTimeSyncResponse>(std::move(pMessage)) == sendMessage);
+        }
+
+        {
+            NotifyMusicState sendMessage;
+            sendMessage.HostPlayerId = 3;
+            sendMessage.State = NotifyMusicState::kPlaying;
+            sendMessage.Current = track;
+            sendMessage.StartServerTimeMs = 3500000.25;
+            sendMessage.PositionMs = 0.0;
+            sendMessage.ReadyCount = 2;
+            sendMessage.PlayerCount = 3;
+            sendMessage.Queue.push_back(track);
+            track.Id = 43;
+            track.VideoId = "-abcdefghij";
+            sendMessage.Queue.push_back(track);
+
+            Buffer::Writer writer(&buff);
+            sendMessage.Serialize(writer);
+            Buffer::Reader reader(&buff);
+
+            const ServerMessageFactory factory;
+            auto pMessage = factory.Extract(reader);
+            REQUIRE(pMessage);
+            REQUIRE(*CastUnique<NotifyMusicState>(std::move(pMessage)) == sendMessage);
+        }
+    }
+
 }
 
 TEST_CASE("Container inventories", "[encoding.inventory]")

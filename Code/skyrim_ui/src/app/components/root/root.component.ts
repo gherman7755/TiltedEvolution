@@ -6,6 +6,7 @@ import { environment } from '../../../environments/environment';
 import { fadeInOutActiveAnimation } from '../../animations/fade-in-out-active.animation';
 import { View } from '../../models/view.enum';
 import { ClientService } from '../../services/client.service';
+import { MusicService } from '../../services/music.service';
 import { DestroyService } from '../../services/destroy.service';
 import {
   SettingService,
@@ -56,6 +57,8 @@ export class RootComponent implements OnInit {
     private readonly uiRepository: UiRepository,
     private readonly translocoService: TranslocoService,
     private readonly settingService: SettingService,
+    // Created here so that music plays with the panel closed.
+    private readonly musicService: MusicService,
     public readonly overlay: Overlay, // used for mockup
   ) {
     this.translocoService.setActiveLang(

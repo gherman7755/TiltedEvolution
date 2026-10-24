@@ -1,0 +1,212 @@
+<div class="tab-buttons">
+  <button
+    data-style-ornament="inverted"
+    [attr.data-style-active]="tab === MusicTab.PLAYER"
+    (click)="switchTab(MusicTab.PLAYER)"
+  >
+    {{ 'COMPONENT.MUSIC.PLAYER' | transloco }}
+  </button>
+  <button
+    data-style-ornament="inverted"
+    [attr.data-style-active]="tab === MusicTab.YOUTUBE"
+    (click)="switchTab(MusicTab.YOUTUBE)"
+  >
+    {{ 'COMPONENT.MUSIC.YOUTUBE' | transloco }}
+  </button>
+</div>
+
+<hr />
+
+<ng-container *ngIf="tools$ | async as tools">
+  <div class="tools" *ngIf="tools.status !== 'ready'">
+    <ng-container [ngSwitch]="tools.status">
+      <span *ngSwitchCase="'installing'">{{ 'COMPONENT.MUSIC.TOOLS_INSTALLING' | transloco }}</span>
+      <ng-container *ngSwitchCase="'failed'">
+        <span class="error">{{ 'COMPONENT.MUSIC.TOOLS_FAILED' | transloco: { error: tools.error } }}</span>
+        <button class="small-button" (click)="installTools()">{{ 'COMPONENT.MUSIC.RETRY' | transloco }}</button>
+      </ng-container>
+      <ng-container *ngSwitchDefault>
+        <span>{{ 'COMPONENT.MUSIC.TOOLS_MISSING' | transloco }}</span>
+        <button class="small-button" (click)="installTools()">{{ 'COMPONENT.MUSIC.INSTALL' | transloco }}</button>
+      </ng-container>
+    </ng-container>
+  </div>
+</ng-container>
+
+<ng-container *ngIf="state$ | async as state">
+  <div class="not-connected" *ngIf="!state.connected">
+    {{ 'COMPONENT.MUSIC.NOT_CONNECTED' | transloco }}
+  </div>
+
+  <ng-container *ngIf="state.connected">
+    <!-- Player -->
+    <ng-container *ngIf="tab === MusicTab.PLAYER">
+      <div class="now-playing">
+        <ng-container *ngIf="state.current as current; else nothingPlaying">
+          <div class="track-title" [title]="current.title">{{ current.title }}</div>
+          <div class="track-meta">
+            {{ current.author }}
+            <span class="added-by">· {{ 'COMPONENT.MUSIC.ADDED_BY' | transloco: { name: current.addedByName } }}</span>
+          </div>
+
+          <div
+            class="progress"
+            [class.seekable]="state.isHost"
+            (click)="state.isHost && seek($event, current.durationMs)"
+          >
+            <div
+              class="progress-fill"
+              [style.width.%]="current.durationMs ? ((position$ | async) ?? 0) / current.durationMs * 100 : 0"
+            ></div>
+          </div>
+          <div class="times">
+            <span>{{ formatTime((position$ | async) ?? 0) }}</span>
+            <span class="status">
+              <ng-container [ngSwitch]="state.state">
+                <ng-container *ngSwitchCase="'preparing'">
+                  <ng-container *ngIf="currentFile$ | async as file; else waiting">
+                    <ng-container [ngSwitch]="file.status">
+                      <span *ngSwitchCase="'downloading'">{{ 'COMPONENT.MUSIC.DOWNLOADING' | transloco: { progress: file.progress.toFixed(0) } }}</span>
+                      <span *ngSwitchCase="'failed'" class="error">{{ 'COMPONENT.MUSIC.DOWNLOAD_FAILED' | transloco }}</span>
+                      <span *ngSwitchDefault>{{ 'COMPONENT.MUSIC.WAITING_FOR_PLAYERS' | transloco: { ready: state.readyCount, total: state.playerCount } }}</span>
+                    </ng-container>
+                  </ng-container>
+                  <ng-template #waiting>
+                    <span>{{ 'COMPONENT.MUSIC.WAITING_FOR_PLAYERS' | transloco: { ready: state.readyCount, total: state.playerCount } }}</span>
+                  </ng-template>
+                </ng-container>
+                <span *ngSwitchCase="'paused'">{{ 'COMPONENT.MUSIC.PAUSED' | transloco }}</span>
+                <ng-container *ngSwitchDefault>
+                  <span *ngIf="(currentFile$ | async)?.status === 'downloading'">
+                    {{ 'COMPONENT.MUSIC.CATCHING_UP' | transloco: { progress: (currentFile$ | async)?.progress?.toFixed(0) } }}
+                  </span>
+                  <span *ngIf="(currentFile$ | async)?.status === 'failed'" class="error">{{ 'COMPONENT.MUSIC.DOWNLOAD_FAILED' | transloco }}</span>
+                </ng-container>
+              </ng-container>
+              <span *ngIf="playbackError$ | async as playbackError" class="error">{{ 'COMPONENT.MUSIC.PLAYBACK_FAILED' | transloco: { error: playbackError } }}</span>
+            </span>
+            <span>{{ formatDuration(current.durationMs) }}</span>
+          </div>
+
+          <div class="controls" *ngIf="state.isHost">
+            <button
+              *ngIf="state.state === 'playing'"
+              data-style-ornament="simple"
+              (click)="command(MusicCommand.PAUSE)"
+            >
+              {{ 'COMPONENT.MUSIC.PAUSE' | transloco }}
+            </button>
+            <button
+              *ngIf="state.state === 'paused'"
+              data-style-ornament="simple"
+              (click)="command(MusicCommand.RESUME)"
+            >
+              {{ 'COMPONENT.MUSIC.RESUME' | transloco }}
+            </button>
+            <button data-style-ornament="simple" (click)="command(MusicCommand.NEXT)">
+              {{ 'COMPONENT.MUSIC.NEXT' | transloco }}
+            </button>
+          </div>
+        </ng-container>
+
+        <ng-template #nothingPlaying>
+          <div class="empty">{{ 'COMPONENT.MUSIC.NOTHING_PLAYING' | transloco }}</div>
+        </ng-template>
+      </div>
+
+      <div class="host-hint">
+        {{ (state.isHost ? 'COMPONENT.MUSIC.YOU_ARE_HOST' : 'COMPONENT.MUSIC.HOST_CONTROLS') | transloco }}
+      </div>
+
+      <div class="section-title">
+        {{ 'COMPONENT.MUSIC.QUEUE' | transloco: { count: state.queue.length } }}
+      </div>
+      <div class="list">
+        <div class="empty" *ngIf="state.queue.length === 0">{{ 'COMPONENT.MUSIC.QUEUE_EMPTY' | transloco }}</div>
+        <div class="row" *ngFor="let track of state.queue; let index = index; let last = last; trackBy: trackById">
+          <span class="index">{{ index + 1 }}</span>
+          <div class="info">
+            <div class="row-title" [title]="track.title">{{ track.title }}</div>
+            <div class="row-meta">{{ track.author }} · {{ formatDuration(track.durationMs) }} · {{ track.addedByName }}</div>
+          </div>
+          <div class="row-actions">
+            <ng-container *ngIf="state.isHost">
+              <button class="small-button" (click)="command(MusicCommand.PLAY, track)" [title]="'COMPONENT.MUSIC.PLAY_NOW' | transloco">▶</button>
+              <button class="small-button" [disabled]="index === 0" (click)="move(track, index - 1)" [title]="'COMPONENT.MUSIC.MOVE_UP' | transloco">▲</button>
+              <button class="small-button" [disabled]="last" (click)="move(track, index + 1)" [title]="'COMPONENT.MUSIC.MOVE_DOWN' | transloco">▼</button>
+            </ng-container>
+            <button
+              *ngIf="canRemove(track, state.isHost, state.localPlayerId)"
+              class="small-button"
+              (click)="command(MusicCommand.REMOVE, track)"
+              [title]="'COMPONENT.MUSIC.REMOVE' | transloco"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+
+    <!-- YouTube -->
+    <ng-container *ngIf="tab === MusicTab.YOUTUBE">
+      <form class="search" (ngSubmit)="submitSearch()">
+        <input
+          type="text"
+          name="query"
+          [(ngModel)]="query"
+          [placeholder]="'COMPONENT.MUSIC.SEARCH_PLACEHOLDER' | transloco"
+          autocomplete="off"
+        />
+        <button type="submit" data-style-ornament="simple" [disabled]="!query.trim()">
+          {{ 'COMPONENT.MUSIC.SEARCH' | transloco }}
+        </button>
+      </form>
+
+      <ng-container *ngIf="search$ | async as search">
+        <div class="empty" *ngIf="search.loading">{{ 'COMPONENT.MUSIC.SEARCHING' | transloco }}</div>
+        <div class="empty error" *ngIf="!search.loading && search.error">{{ 'COMPONENT.MUSIC.SEARCH_FAILED' | transloco: { error: search.error } }}</div>
+        <div class="empty" *ngIf="!search.loading && !search.error && search.query && search.results.length === 0">
+          {{ 'COMPONENT.MUSIC.NO_RESULTS' | transloco }}
+        </div>
+
+        <div class="list" *ngIf="!search.loading && search.results.length > 0">
+          <div class="row" *ngFor="let result of search.results; trackBy: resultById">
+            <img class="thumbnail" [src]="'https://i.ytimg.com/vi/' + result.videoId + '/default.jpg'" alt="" loading="lazy" />
+            <div class="info">
+              <div class="row-title" [title]="result.title">{{ result.title }}</div>
+              <div class="row-meta">{{ result.author }} · {{ formatDuration(result.durationMs) }}</div>
+            </div>
+            <div class="row-actions">
+              <span class="queued" *ngIf="(queuedIds$ | async)?.has(result.videoId)">{{ 'COMPONENT.MUSIC.IN_QUEUE' | transloco }}</span>
+              <button class="small-button" (click)="add(result)">{{ 'COMPONENT.MUSIC.ADD' | transloco }}</button>
+            </div>
+          </div>
+        </div>
+      </ng-container>
+    </ng-container>
+  </ng-container>
+</ng-container>
+
+<hr />
+
+<div class="settings">
+  <label class="toggle">
+    <input type="checkbox" [checked]="enabled$ | async" (change)="toggleEnabled()" />
+    {{ 'COMPONENT.MUSIC.LISTEN' | transloco }}
+  </label>
+  <label>
+    {{ 'COMPONENT.MUSIC.VOLUME' | transloco }}
+    <input type="range" min="0" max="1" step="0.01" [ngModel]="volume$ | async" (ngModelChange)="setVolume($event)" />
+  </label>
+  <label [title]="'COMPONENT.MUSIC.LATENCY_HINT' | transloco">
+    {{ 'COMPONENT.MUSIC.LATENCY' | transloco: { ms: latency$ | async } }}
+    <input type="range" min="0" max="500" step="10" [ngModel]="latency$ | async" (ngModelChange)="setLatency($event)" />
+  </label>
+</div>
+
+<div class="actions">
+  <button data-style-ornament="simple" class="btnCancel" (click)="close()">
+    {{ 'COMPONENT.MUSIC.BACK' | transloco }}
+  </button>
+</div>
