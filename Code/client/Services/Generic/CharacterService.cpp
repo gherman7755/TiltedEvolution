@@ -1717,6 +1717,15 @@ void CharacterService::ProcessLeveledConforms() noexcept
                 continue;
             }
 
+            // The owner's values were forced as offsets from the old base. The base change keeps those offsets,
+            // so a weak local pick conformed to a strong one would stack both and end up with e.g. double health.
+            ActorValues ownerValues{};
+            for (int i = 0; i < ActorValueInfo::kActorValueCount; i++)
+            {
+                ownerValues.ActorValuesList.insert({i, pActor->GetActorValue(i)});
+                ownerValues.ActorMaxValuesList.insert({i, pActor->GetActorPermanentValue(i)});
+            }
+
             if (!LeveledNpcSystem::ApplyPick(pActor, pPick))
             {
                 spdlog::warn("Could not rebuild leveled actor {:X} from its original base and pick {:X}, keeping local base", it->first, cPickFormId);
@@ -1725,6 +1734,11 @@ void CharacterService::ProcessLeveledConforms() noexcept
                 it = m_pendingLeveledConforms.erase(it);
                 continue;
             }
+
+            const float cHealthAfterPick = pActor->GetActorPermanentValue(ActorValueInfo::kHealth);
+            pActor->SetActorValues(ownerValues);
+            spdlog::info("Restored owner's values on conformed leveled actor {:X}, max health: {} (would have been {})",
+                it->first, pActor->GetActorPermanentValue(ActorValueInfo::kHealth), cHealthAfterPick);
 
             // Recompute the graph descriptor after changing picks; stale variable indices can cause out-of-bounds writes.
             pActor->GetExtension()->GraphDescriptorHash = 0;
