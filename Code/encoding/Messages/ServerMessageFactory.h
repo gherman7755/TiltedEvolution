@@ -65,6 +65,7 @@
 #include <Messages/PickupDroppedItemResponse.h>
 #include <Messages/MusicTimeSyncResponse.h>
 #include <Messages/NotifyMusicState.h>
+#include <Messages/NotifyPlayerStealth.h>
 
 using TiltedPhoques::UniquePtr;
 
@@ -80,7 +81,7 @@ struct ServerMessageFactory
             NotifyProjectileLaunch, NotifyInterruptCast, NotifyAddTarget, NotifyScriptAnimation, NotifyDrawWeapon, NotifyMount, NotifyNewPackage, NotifyRespawn, NotifySyncExperience, NotifyEquipmentChanges, NotifyChatMessageBroadcast, TeleportCommandResponse, NotifyPlayerRespawn, NotifyDialogue,
             NotifySubtitle, NotifyPlayerDialogue, NotifyActorTeleport, NotifyPlayerLeft, NotifyPlayerJoined, NotifyDialogue, NotifySubtitle, NotifyPlayerDialogue, NotifyPlayerLevel, NotifyPlayerCellChanged, NotifyTeleport, NotifyPlayerHealthUpdate, NotifySettingsChange,
             NotifyWeatherChange, NotifySetWaypoint, NotifyRemoveWaypoint, NotifySetTimeResult, NotifyRemoveSpell, NotifyActionEvents, DropItemResponse, NotifyDroppedItems, NotifyDroppedItemRemoved,
-            PickupDroppedItemResponse, MusicTimeSyncResponse, NotifyMusicState>;
+            PickupDroppedItemResponse, MusicTimeSyncResponse, NotifyMusicState, NotifyPlayerStealth>;
 
         return s_visitor(std::forward<T>(func));
     }

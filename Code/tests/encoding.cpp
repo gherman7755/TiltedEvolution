@@ -760,6 +760,58 @@ TEST_CASE("Packets", "[encoding.packets]")
         }
     }
 
+    GIVEN("Stealth messages")
+    {
+        Buffer buff(1000);
+
+        {
+            PlayerStealthRequest sendMessage;
+            sendMessage.MovementFlags = (1u << 6) | (1u << 9);
+            sendMessage.Perks.push_back(GameId(0, 0xBE126));
+            sendMessage.Perks.push_back(GameId(0, 0x58213));
+
+            Buffer::Writer writer(&buff);
+            sendMessage.Serialize(writer);
+            Buffer::Reader reader(&buff);
+
+            const ClientMessageFactory factory;
+            auto pMessage = factory.Extract(reader);
+            REQUIRE(pMessage);
+            REQUIRE(*CastUnique<PlayerStealthRequest>(std::move(pMessage)) == sendMessage);
+        }
+
+        {
+            NotifyPlayerStealth sendMessage;
+            sendMessage.ServerId = 0x100015;
+            sendMessage.MovementFlags = 1u << 8;
+            sendMessage.Perks.push_back(GameId(0, 0x105F24));
+
+            Buffer::Writer writer(&buff);
+            sendMessage.Serialize(writer);
+            Buffer::Reader reader(&buff);
+
+            const ServerMessageFactory factory;
+            auto pMessage = factory.Extract(reader);
+            REQUIRE(pMessage);
+            REQUIRE(*CastUnique<NotifyPlayerStealth>(std::move(pMessage)) == sendMessage);
+        }
+
+        {
+            RequestOwnershipClaim sendMessage;
+            sendMessage.ServerId = 0x100328;
+            sendMessage.ExpectedOwnershipEpoch = 2;
+            sendMessage.Reason = RequestOwnershipClaim::kQuestPull;
+
+            Buffer::Writer writer(&buff);
+            sendMessage.Serialize(writer);
+            Buffer::Reader reader(&buff);
+
+            const ClientMessageFactory factory;
+            auto pMessage = factory.Extract(reader);
+            REQUIRE(pMessage);
+            REQUIRE(*CastUnique<RequestOwnershipClaim>(std::move(pMessage)) == sendMessage);
+        }
+    }
 }
 
 TEST_CASE("Container inventories", "[encoding.inventory]")

@@ -59,6 +59,7 @@ enum ClientOpcode : unsigned char
     kMusicTimeSyncRequest,
     kMusicCommandRequest,
     kMusicTrackStatusRequest,
+    kPlayerStealthRequest,
     kClientOpcodeMax
 };
 
@@ -125,5 +126,6 @@ enum ServerOpcode : unsigned char
     kPickupDroppedItemResponse,
     kMusicTimeSyncResponse,
     kNotifyMusicState,
+    kNotifyPlayerStealth,
     kServerOpcodeMax
 };
