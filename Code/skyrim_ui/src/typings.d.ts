@@ -96,6 +96,57 @@ declare namespace SkyrimTogetherTypes {
   type PartyInviteReceivedCallback = (inviterId: number) => void;
 
   type QuestUpdatedCallback = () => void;
+
+  type MusicTrack = {
+    id: number;
+    videoId: string;
+    title: string;
+    author: string;
+    durationMs: number;
+    addedById: number;
+    addedByName: string;
+  };
+
+  type MusicStateCallback = (state: {
+    connected: boolean;
+    state: 'idle' | 'preparing' | 'playing' | 'paused';
+    hostPlayerId: number;
+    localPlayerId: number;
+    isHost: boolean;
+    startServerTimeMs: number;
+    positionMs: number;
+    readyCount: number;
+    playerCount: number;
+    current: MusicTrack | null;
+    queue: MusicTrack[];
+  }) => void;
+
+  /** offsetMs is what to add to Date.now() to get the server music clock. */
+  type MusicClockCallback = (offsetMs: number, roundTripMs: number) => void;
+
+  type MusicFileCallback = (
+    videoId: string,
+    status: 'queued' | 'downloading' | 'ready' | 'failed',
+    progress: number,
+    path: string,
+    error: string,
+  ) => void;
+
+  type MusicToolsCallback = (
+    status: 'missing' | 'installing' | 'ready' | 'failed',
+    error: string,
+  ) => void;
+
+  type MusicSearchResultsCallback = (
+    query: string,
+    results: Array<{
+      videoId: string;
+      title: string;
+      author: string;
+      durationMs: number;
+    }>,
+    error: string,
+  ) => void;
 }
 
 /** Global Skyrim: Together object. */
@@ -224,6 +275,34 @@ interface SkyrimTogether {
   on(
     event: 'questUpdated',
     callback: SkyrimTogetherTypes.QuestUpdatedCallback,
+  ): void;
+
+  /** Add listener to when the shared music queue or playback changes. */
+  on(event: 'musicState', callback: SkyrimTogetherTypes.MusicStateCallback): void;
+
+  /** Add listener to when the offset to the server music clock is updated. */
+  on(event: 'musicClock', callback: SkyrimTogetherTypes.MusicClockCallback): void;
+
+  /** Add listener to when a track download makes progress. */
+  on(event: 'musicFile', callback: SkyrimTogetherTypes.MusicFileCallback): void;
+
+  /** Add listener to when the state of yt-dlp and Deno changes. */
+  on(event: 'musicTools', callback: SkyrimTogetherTypes.MusicToolsCallback): void;
+
+  /** Add listener to when YouTube search results arrive. */
+  on(
+    event: 'musicSearchResults',
+    callback: SkyrimTogetherTypes.MusicSearchResultsCallback,
+  ): void;
+
+  off(
+    event:
+      | 'musicState'
+      | 'musicClock'
+      | 'musicFile'
+      | 'musicTools'
+      | 'musicSearchResults',
+    callback?: (...args: any[]) => void,
   ): void;
 
   /** Remove listener from when the application is first initialized. */
@@ -449,4 +528,38 @@ interface SkyrimTogether {
    * Open the play guide on the wiki in the default browser.
    */
   openPlayGuide(): void;
+
+  /**
+   * Search YouTube, the results come back through 'musicSearchResults'.
+   *
+   * @param query Search terms, or a link to a video or playlist.
+   */
+  musicSearch(query: string): void;
+
+  /**
+   * Add a track to the shared music queue.
+   */
+  musicAdd(videoId: string, title: string, author: string, durationMs: number): void;
+
+  /**
+   * Change the shared music queue or playback, see MusicCommand.
+   *
+   * @param value Position in ms to seek to, or the new queue index to move a track to.
+   */
+  musicCommand(command: number, trackId: number, value: number): void;
+
+  /**
+   * Tell the server whether the current track is ready to play.
+   */
+  musicTrackLoaded(trackId: number, ready: boolean, durationMs: number): void;
+
+  /**
+   * Download yt-dlp and Deno.
+   */
+  musicInstallTools(): void;
+
+  /**
+   * Send the whole music state to the UI again.
+   */
+  musicSync(): void;
 }

@@ -54,6 +54,12 @@ enum ClientOpcode : unsigned char
     kRequestRemoveWaypoint,
     kSetTimeCommandRequest,
     kRequestActionEvents,
+    kDropItemRequest,
+    kPickupDroppedItemRequest,
+    kMusicTimeSyncRequest,
+    kMusicCommandRequest,
+    kMusicTrackStatusRequest,
+    kPlayerStealthRequest,
     kClientOpcodeMax
 };
 
@@ -114,5 +120,12 @@ enum ServerOpcode : unsigned char
     kNotifyRemoveWaypoint,
     kNotifySetTimeResult,
     kNotifyActionEvents,
+    kDropItemResponse,
+    kNotifyDroppedItems,
+    kNotifyDroppedItemRemoved,
+    kPickupDroppedItemResponse,
+    kMusicTimeSyncResponse,
+    kNotifyMusicState,
+    kNotifyPlayerStealth,
     kServerOpcodeMax
 };

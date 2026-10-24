@@ -317,6 +317,73 @@ export class SkyrimtogetherMock extends EventEmitter implements SkyrimTogether {
     );
   }
 
+  private mockMusicQueue: SkyrimTogetherTypes.MusicTrack[] = [];
+  private mockMusicTrackId = 1;
+
+  musicSearch(query: string): void {
+    setTimeout(() => {
+      this.emit(
+        'musicSearchResults',
+        query,
+        [1, 2, 3].map(i => ({
+          videoId: `mockVideo${i.toString().padStart(2, '0')}`,
+          title: `${query} (result ${i})`,
+          author: 'Mock channel',
+          durationMs: 180000 + i * 15000,
+        })),
+        '',
+      );
+    }, 500);
+  }
+
+  musicAdd(videoId: string, title: string, author: string, durationMs: number): void {
+    this.mockMusicQueue.push({
+      id: this.mockMusicTrackId++,
+      videoId,
+      title,
+      author,
+      durationMs,
+      addedById: this.localPlayerId ?? 0,
+      addedByName: this.playerName,
+    });
+    this.emitMockMusicState();
+  }
+
+  musicCommand(command: number, trackId: number, value: number): void {
+    if (command === 1) {
+      this.mockMusicQueue = this.mockMusicQueue.filter(track => track.id !== trackId);
+    }
+    this.emitMockMusicState();
+  }
+
+  musicTrackLoaded(trackId: number, ready: boolean, durationMs: number): void {}
+
+  musicInstallTools(): void {
+    this.emit('musicTools', 'ready', '');
+  }
+
+  musicSync(): void {
+    this.emit('musicTools', 'ready', '');
+    this.emitMockMusicState();
+  }
+
+  private emitMockMusicState() {
+    const [current, ...queue] = this.mockMusicQueue;
+    this.emit('musicState', {
+      connected: this.connected,
+      state: current ? 'paused' : 'idle',
+      hostPlayerId: this.localPlayerId ?? 0,
+      localPlayerId: this.localPlayerId ?? 0,
+      isHost: true,
+      startServerTimeMs: 0,
+      positionMs: 0,
+      readyCount: 1,
+      playerCount: 1,
+      current: current ?? null,
+      queue,
+    });
+  }
+
   mockQuestUpdate() {
     this.emit('questUpdated');
   }

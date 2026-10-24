@@ -17,6 +17,8 @@
 #include <Messages/PlayerLevelRequest.h>
 #include <Messages/NotifyPlayerLevel.h>
 #include <Messages/NotifyPlayerCellChanged.h>
+#include <Messages/PlayerStealthRequest.h>
+#include <Messages/NotifyPlayerStealth.h>
 
 #include <Setting.h>
 namespace
@@ -31,6 +33,7 @@ PlayerService::PlayerService(World& aWorld, entt::dispatcher& aDispatcher) noexc
     , m_exteriorCellEnterConnection(aDispatcher.sink<PacketEvent<EnterExteriorCellRequest>>().connect<&PlayerService::HandleExteriorCellEnter>(this))
     , m_playerRespawnConnection(aDispatcher.sink<PacketEvent<PlayerRespawnRequest>>().connect<&PlayerService::OnPlayerRespawnRequest>(this))
     , m_playerLevelConnection(aDispatcher.sink<PacketEvent<PlayerLevelRequest>>().connect<&PlayerService::OnPlayerLevelRequest>(this))
+    , m_playerStealthConnection(aDispatcher.sink<PacketEvent<PlayerStealthRequest>>().connect<&PlayerService::OnPlayerStealthRequest>(this))
 {
 }
 
@@ -214,4 +217,19 @@ void PlayerService::OnPlayerLevelRequest(const PacketEvent<PlayerLevelRequest>& 
     notify.NewLevel = acMessage.Packet.NewLevel;
 
     GameServer::Get()->SendToPlayers(notify, acMessage.pPlayer);
+}
+
+void PlayerService::OnPlayerStealthRequest(const PacketEvent<PlayerStealthRequest>& acMessage) const noexcept
+{
+    const auto character = acMessage.pPlayer->GetCharacter();
+    if (!character)
+        return;
+
+    NotifyPlayerStealth notify{};
+    notify.ServerId = World::ToInteger(*character);
+    notify.MovementFlags = acMessage.Packet.MovementFlags;
+    notify.Perks = acMessage.Packet.Perks;
+
+    // Only the clients simulating the NPCs around this player need it.
+    GameServer::Get()->SendToPlayersInRange(notify, *character, acMessage.pPlayer);
 }

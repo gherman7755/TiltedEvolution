@@ -28,6 +28,7 @@ private:
     void ProcessChatMessage(CefRefPtr<CefListValue> aEventArgs);
     void ProcessSetTimeCommand(CefRefPtr<CefListValue> aEventArgs);
     void ProcessTeleportMessage(CefRefPtr<CefListValue> aEventArgs);
+    void ProcessMusicMessage(const std::string& acEventName, CefRefPtr<CefListValue> aEventArgs);
     void ProcessToggleDebugUI();
     void ProcessOpenPlayGuide();
     void SetUIVisible(bool aVisible) noexcept;

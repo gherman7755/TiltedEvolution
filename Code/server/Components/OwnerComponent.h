@@ -25,4 +25,6 @@ struct OwnerComponent
     Player* pOwner;
     uint32_t OwnershipEpoch;
     Vector<const Player*> InvalidOwners{};
+    // Two clients whose quests both pull the actor to their player would otherwise take it from each other forever.
+    std::chrono::steady_clock::time_point LastQuestPull{};
 };

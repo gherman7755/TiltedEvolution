@@ -5,6 +5,7 @@
 
 #include <Services/OverlayClient.h>
 #include <Services/TransportService.h>
+#include <Services/MusicService.h>
 
 #include <Messages/SendChatMessageRequest.h>
 #include <Messages/TeleportRequest.h>
@@ -82,6 +83,8 @@ bool OverlayClient::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefR
             ProcessToggleDebugUI();
         else if (eventName == "openPlayGuide")
             ProcessOpenPlayGuide();
+        else if (eventName.starts_with("music"))
+            ProcessMusicMessage(eventName, eventArgs);
 
         return true;
     }
@@ -145,6 +148,63 @@ void OverlayClient::ProcessTeleportMessage(CefRefPtr<CefListValue> aEventArgs)
     request.PlayerId = aEventArgs->GetInt(0);
 
     m_transport.Send(request);
+}
+
+namespace
+{
+// JavaScript numbers arrive as ints or doubles depending on their value.
+double GetNumber(const CefRefPtr<CefListValue>& acArguments, size_t aIndex) noexcept
+{
+    switch (acArguments->GetType(aIndex))
+    {
+    case VTYPE_INT: return acArguments->GetInt(aIndex);
+    case VTYPE_DOUBLE: return acArguments->GetDouble(aIndex);
+    default: return 0.0;
+    }
+}
+} // namespace
+
+void OverlayClient::ProcessMusicMessage(const std::string& acEventName, CefRefPtr<CefListValue> aEventArgs)
+{
+    // The music service lives on the main thread.
+    if (acEventName == "musicSearch")
+    {
+        std::string query = aEventArgs->GetString(0).ToString();
+        World::Get().GetRunner().Queue([query] { World::Get().ctx().at<MusicService>().Search(query); });
+    }
+    else if (acEventName == "musicAdd")
+    {
+        MusicTrackData track{};
+        track.VideoId = aEventArgs->GetString(0).ToString().c_str();
+        track.Title = aEventArgs->GetString(1).ToString().c_str();
+        track.Author = aEventArgs->GetString(2).ToString().c_str();
+        track.DurationMs = static_cast<uint32_t>(std::max(GetNumber(aEventArgs, 3), 0.0));
+
+        World::Get().GetRunner().Queue([track] { World::Get().ctx().at<MusicService>().SendCommand(MusicCommandRequest::kAdd, 0, 0.0, track); });
+    }
+    else if (acEventName == "musicCommand")
+    {
+        const auto cCommand = static_cast<MusicCommandRequest::Action>(static_cast<int>(GetNumber(aEventArgs, 0)));
+        const auto cTrackId = static_cast<uint32_t>(GetNumber(aEventArgs, 1));
+        const double cValue = GetNumber(aEventArgs, 2);
+
+        if (cCommand == MusicCommandRequest::kAdd || cCommand > MusicCommandRequest::kMove)
+            return;
+
+        World::Get().GetRunner().Queue([cCommand, cTrackId, cValue] { World::Get().ctx().at<MusicService>().SendCommand(cCommand, cTrackId, cValue); });
+    }
+    else if (acEventName == "musicTrackLoaded")
+    {
+        const auto cTrackId = static_cast<uint32_t>(GetNumber(aEventArgs, 0));
+        const bool cReady = aEventArgs->GetBool(1);
+        const auto cDurationMs = static_cast<uint32_t>(std::max(GetNumber(aEventArgs, 2), 0.0));
+
+        World::Get().GetRunner().Queue([cTrackId, cReady, cDurationMs] { World::Get().ctx().at<MusicService>().OnTrackLoaded(cTrackId, cReady, cDurationMs); });
+    }
+    else if (acEventName == "musicInstallTools")
+        World::Get().GetRunner().Queue([] { World::Get().ctx().at<MusicService>().InstallTools(); });
+    else if (acEventName == "musicSync")
+        World::Get().GetRunner().Queue([] { World::Get().ctx().at<MusicService>().SyncUI(); });
 }
 
 void OverlayClient::ProcessToggleDebugUI()

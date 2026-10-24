@@ -350,10 +350,19 @@ void CharacterService::OnOwnershipClaimRequest(const PacketEvent<RequestOwnershi
     const auto& message = acMessage.Packet;
     const entt::entity cEntity = static_cast<entt::entity>(message.ServerId);
 
-    if (!CanClaimOwnership(acMessage.pPlayer, cEntity, message.ExpectedOwnershipEpoch, OwnershipTransferReason::LeaderClaim))
+    const auto cReason = message.Reason == RequestOwnershipClaim::kQuestPull ? OwnershipTransferReason::QuestPull : OwnershipTransferReason::LeaderClaim;
+
+    if (!CanClaimOwnership(acMessage.pPlayer, cEntity, message.ExpectedOwnershipEpoch, cReason))
         return;
 
-    TransferOwnership(acMessage.pPlayer, cEntity, OwnershipTransferReason::LeaderClaim);
+    if (!TransferOwnership(acMessage.pPlayer, cEntity, cReason))
+        return;
+
+    if (cReason == OwnershipTransferReason::QuestPull)
+    {
+        m_world.get<OwnerComponent>(cEntity).LastQuestPull = std::chrono::steady_clock::now();
+        spdlog::info("Gave actor {:X} to player {:X} because a quest keeps placing it next to them", message.ServerId, acMessage.pPlayer->GetId());
+    }
 }
 
 void CharacterService::OnCharacterSpawned(const CharacterSpawnedEvent& acEvent) const noexcept
@@ -765,6 +774,8 @@ const char* CharacterService::GetOwnershipTransferReasonName(const OwnershipTran
         return "owner relinquished control";
     case OwnershipTransferReason::OwnerUnavailable:
         return "owner became unavailable";
+    case OwnershipTransferReason::QuestPull:
+        return "quest pull";
     }
 
     return "unknown reason";
@@ -805,10 +816,26 @@ bool CharacterService::CanClaimOwnership(Player* apPlayer, const entt::entity aE
     if (characterComponent.IsMount() || characterComponent.IsPlayer())
         return reject("the actor cannot be claimed");
 
+    auto& partyService = m_world.GetPartyService();
+
+    if (aReason == OwnershipTransferReason::QuestPull)
+    {
+        // The claimant has the actor loaded next to them, the server only knows where the current owner keeps it, so no range check.
+        constexpr auto cQuestPullCooldown = std::chrono::seconds(15);
+        if (std::chrono::steady_clock::now() - ownerComponent.LastQuestPull < cQuestPullCooldown)
+            return reject("the actor was handed over for a quest moments ago");
+
+        // Players of different parties do not share quests, the claimant's quest would be fighting someone else's game.
+        PartyService::Party* const pParty = partyService.GetPlayerParty(apPlayer);
+        if (pParty && std::find(pParty->Members.begin(), pParty->Members.end(), pCurrentOwner) == pParty->Members.end())
+            return reject("the current owner is not in the party");
+
+        return true;
+    }
+
     if (!apPlayer->GetCellComponent().IsInRange(cellIdComponent, characterComponent.IsDragon()))
         return reject("the actor is out of range");
 
-    auto& partyService = m_world.GetPartyService();
     if (!partyService.IsPlayerInParty(apPlayer) || !partyService.IsPlayerLeader(apPlayer))
         return reject("the player is not the party leader");
 

@@ -42,6 +42,19 @@
 using TiltedPhoques::OverlayRenderHandler;
 using TiltedPhoques::OverlayRenderHandlerD3D11;
 
+struct SkyrimOverlayApp final : OverlayApp
+{
+    using OverlayApp::OverlayApp;
+
+    void OnBeforeCommandLineProcessing(const CefString& aProcessType, CefRefPtr<CefCommandLine> aCommandLine) override
+    {
+        OverlayApp::OnBeforeCommandLineProcessing(aProcessType, aCommandLine);
+
+        // Shared music starts when the server says so, not after a click in the UI.
+        aCommandLine->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");
+    }
+};
+
 struct D3D11RenderProvider final : OverlayApp::RenderProvider, OverlayRenderHandlerD3D11::Renderer
 {
     explicit D3D11RenderProvider(RenderSystemD3D11* apRenderSystem)
@@ -136,7 +149,7 @@ OverlayService::~OverlayService() noexcept
 void OverlayService::Create(RenderSystemD3D11* apRenderSystem) noexcept
 {
     m_pProvider = TiltedPhoques::MakeUnique<D3D11RenderProvider>(apRenderSystem);
-    m_pOverlay = new OverlayApp(m_pProvider.get(), new ::OverlayClient(m_transport, m_pProvider->Create()));
+    m_pOverlay = new SkyrimOverlayApp(m_pProvider.get(), new ::OverlayClient(m_transport, m_pProvider->Create()));
 
     if (!m_pOverlay->Initialize())
     {

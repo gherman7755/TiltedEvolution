@@ -181,7 +181,7 @@ void CharacterService::ReconcileActorData(
         m_weaponDrawUpdates[apActor->formID] = {acActorData.IsWeaponDrawn};
 }
 
-bool CharacterService::RequestOwnership(const uint32_t aFormId, const uint32_t aServerId, const entt::entity aEntity) const noexcept
+bool CharacterService::RequestOwnership(const uint32_t aFormId, const uint32_t aServerId, const entt::entity aEntity, const bool aQuestPull) const noexcept
 {
     Actor* pActor = Cast<Actor>(TESForm::GetById(aFormId));
     if (!pActor)
@@ -210,6 +210,7 @@ bool CharacterService::RequestOwnership(const uint32_t aFormId, const uint32_t a
     RequestOwnershipClaim request;
     request.ServerId = aServerId;
     request.ExpectedOwnershipEpoch = pRemoteComponent->OwnershipEpoch;
+    request.Reason = aQuestPull ? RequestOwnershipClaim::kQuestPull : RequestOwnershipClaim::kLeader;
 
     if (!m_transport.Send(request))
         return false;
@@ -226,6 +227,20 @@ void CharacterService::DeleteTempActor(const uint32_t aFormId) noexcept
         spdlog::info("\tDeleted actor {:X}", aFormId);
     }
 }
+
+namespace
+{
+// An actor removed this soon after being moved to its owner was unloaded by the move.
+constexpr auto kQuestPullMoveWindow = std::chrono::seconds(2);
+// Bounces needed within the window before the actor is claimed.
+constexpr uint32_t kQuestPullBounces = 2;
+constexpr auto kQuestPullBounceWindow = std::chrono::seconds(10);
+// How long a claim gets to settle the bouncing.
+constexpr auto kQuestPullClaimPatience = std::chrono::seconds(15);
+constexpr auto kQuestPullMinBackoff = std::chrono::seconds(15);
+constexpr auto kQuestPullMaxBackoff = std::chrono::seconds(300);
+constexpr auto kQuestPullForgetAfter = std::chrono::seconds(120);
+} // namespace
 
 void CharacterService::OnActorAdded(const ActorAddedEvent& acEvent) noexcept
 {
@@ -270,6 +285,34 @@ void CharacterService::OnActorRemoved(const ActorRemovedEvent& acEvent) noexcept
 
     m_pendingLeveledConforms.erase(acEvent.FormId);
 
+    if (auto questPullIt = m_questPulls.find(acEvent.FormId); questPullIt != m_questPulls.end())
+    {
+        // hopscotch_map only hands out mutable values through value().
+        auto& questPull = questPullIt.value();
+        const auto cNow = std::chrono::steady_clock::now();
+
+        if (cNow - questPull.MovedAwayAt < kQuestPullMoveWindow)
+        {
+            questPull.MovedAwayAt = {};
+
+            if (cNow - questPull.FirstBounceAt > kQuestPullBounceWindow)
+            {
+                questPull.FirstBounceAt = cNow;
+                questPull.Bounces = 0;
+            }
+            ++questPull.Bounces;
+
+            if (cNow - questPull.ClaimedAt < kQuestPullClaimPatience)
+            {
+                questPull.Backoff = std::clamp(questPull.Backoff * 2, kQuestPullMinBackoff, kQuestPullMaxBackoff);
+                questPull.BackoffUntil = cNow + questPull.Backoff;
+                questPull.Deferred = false;
+
+                spdlog::warn("Actor {:X} is still pulled away after claiming it, not syncing it for {}s", acEvent.FormId, questPull.Backoff.count());
+            }
+        }
+    }
+
     auto view = m_world.view<FormIdComponent>();
     const auto entityIt = std::find_if(view.begin(), view.end(), [view, formId = acEvent.FormId](auto aEntity) { return view.get<FormIdComponent>(aEntity).Id == formId; });
 
@@ -304,6 +347,46 @@ void CharacterService::OnUpdate(const UpdateEvent& acUpdateEvent) noexcept
     RunExperienceUpdates();
     ApplyCachedWeaponDraws(acUpdateEvent);
     ProcessLeveledConforms();
+    RunQuestPullBackoffs();
+}
+
+void CharacterService::RunQuestPullBackoffs() noexcept
+{
+    if (m_questPulls.empty())
+        return;
+
+    const auto cNow = std::chrono::steady_clock::now();
+
+    for (auto it = m_questPulls.begin(); it != m_questPulls.end();)
+    {
+        auto& questPull = it.value();
+
+        if (questPull.Deferred)
+        {
+            if (cNow >= questPull.BackoffUntil)
+            {
+                questPull.Deferred = false;
+
+                auto view = m_world.view<FormIdComponent>(entt::exclude<ObjectComponent, LocalComponent, RemoteComponent, WaitingForAssignmentComponent>);
+                const auto cFormId = it->first;
+                const auto entityIt = std::find_if(view.begin(), view.end(), [view, cFormId](auto aEntity) { return view.get<FormIdComponent>(aEntity).Id == cFormId; });
+                if (entityIt != view.end())
+                {
+                    spdlog::info("Syncing actor {:X} again after its quest pull backoff", cFormId);
+                    ProcessNewEntity(*entityIt);
+                }
+            }
+
+            ++it;
+            continue;
+        }
+
+        const auto cLastActivity = std::max({questPull.MovedAwayAt, questPull.FirstBounceAt, questPull.ClaimedAt, questPull.BackoffUntil});
+        if (cNow - cLastActivity > kQuestPullForgetAfter)
+            it = m_questPulls.erase(it);
+        else
+            ++it;
+    }
 }
 
 void CharacterService::OnConnected(const ConnectedEvent& acConnectedEvent) const noexcept
@@ -362,6 +445,7 @@ void CharacterService::OnDisconnected(const DisconnectedEvent& acDisconnectedEve
     }
 
     m_pendingLeveledConforms.clear();
+    m_questPulls.clear();
 }
 
 void CharacterService::OnAssignCharacter(const AssignCharacterResponse& acMessage) noexcept
@@ -485,7 +569,22 @@ void CharacterService::OnAssignCharacter(const AssignCharacterResponse& acMessag
 
         ReconcileActorData(cEntity, pActor, acMessage.OwnershipEpoch, actorData, true, false);
 
-        MoveActor(pActor, acMessage.WorldSpaceId, acMessage.CellId, acMessage.Position);
+        const auto cNow = std::chrono::steady_clock::now();
+        auto& questPull = m_questPulls[pActor->formID];
+        const bool cIsBouncing = questPull.Bounces >= kQuestPullBounces && cNow - questPull.FirstBounceAt < kQuestPullBounceWindow;
+
+        // Keep it here while the claim is on its way, moving it away would just start the next round.
+        if (cIsBouncing && cNow - questPull.ClaimedAt > kQuestPullClaimPatience && !pActor->IsTemporary() &&
+            RequestOwnership(pActor->formID, acMessage.ServerId, cEntity, true))
+        {
+            questPull.ClaimedAt = cNow;
+            spdlog::info("Actor {:X} keeps coming back after being moved to its owner, claiming it as pulled here by a quest", pActor->formID);
+        }
+        else
+        {
+            questPull.MovedAwayAt = cNow;
+            MoveActor(pActor, acMessage.WorldSpaceId, acMessage.CellId, acMessage.Position);
+        }
 
         // The owner's leveled pick rides the assignment response for actors we discovered ourselves
         ApplyLeveledNpcPick(pActor, acMessage.LeveledNpcPickId);
@@ -1278,6 +1377,16 @@ void CharacterService::ProcessNewEntity(entt::entity aEntity) const noexcept
     if (m_world.any_of<RemoteComponent, LocalComponent, WaitingForAssignmentComponent>(aEntity))
         return;
 
+    if (auto questPullIt = m_questPulls.find(pActor->formID); questPullIt != m_questPulls.end() && std::chrono::steady_clock::now() < questPullIt->second.BackoffUntil)
+    {
+        // RunQuestPullBackoffs picks it up again.
+        if (!questPullIt->second.Deferred)
+            spdlog::info("Not syncing actor {:X} until its quest stops pulling it away", pActor->formID);
+
+        questPullIt.value().Deferred = true;
+        return;
+    }
+
     CacheSystem::Setup(World::Get(), aEntity, pActor);
 
     RequestServerAssignment(aEntity);
@@ -1717,6 +1826,15 @@ void CharacterService::ProcessLeveledConforms() noexcept
                 continue;
             }
 
+            // The owner's values were forced as offsets from the old base. The base change keeps those offsets,
+            // so a weak local pick conformed to a strong one would stack both and end up with e.g. double health.
+            ActorValues ownerValues{};
+            for (int i = 0; i < ActorValueInfo::kActorValueCount; i++)
+            {
+                ownerValues.ActorValuesList.insert({i, pActor->GetActorValue(i)});
+                ownerValues.ActorMaxValuesList.insert({i, pActor->GetActorPermanentValue(i)});
+            }
+
             if (!LeveledNpcSystem::ApplyPick(pActor, pPick))
             {
                 spdlog::warn("Could not rebuild leveled actor {:X} from its original base and pick {:X}, keeping local base", it->first, cPickFormId);
@@ -1725,6 +1843,11 @@ void CharacterService::ProcessLeveledConforms() noexcept
                 it = m_pendingLeveledConforms.erase(it);
                 continue;
             }
+
+            const float cHealthAfterPick = pActor->GetActorPermanentValue(ActorValueInfo::kHealth);
+            pActor->SetActorValues(ownerValues);
+            spdlog::info("Restored owner's values on conformed leveled actor {:X}, max health: {} (would have been {})",
+                it->first, pActor->GetActorPermanentValue(ActorValueInfo::kHealth), cHealthAfterPick);
 
             // Recompute the graph descriptor after changing picks; stale variable indices can cause out-of-bounds writes.
             pActor->GetExtension()->GraphDescriptorHash = 0;

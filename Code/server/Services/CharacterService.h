@@ -46,7 +46,8 @@ protected:
         LeaderClaim,
         Mount,
         Relinquish,
-        OwnerUnavailable
+        OwnerUnavailable,
+        QuestPull
     };
 
     void OnUpdate(const UpdateEvent& acEvent) const noexcept;

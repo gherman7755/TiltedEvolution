@@ -48,6 +48,13 @@
         >
           {{ 'COMPONENT.ROOT.PLAYER_MANAGER' | transloco }}
         </button>
+        <button
+          data-style-ornament="inverted"
+          [attr.data-style-active]="(view$ | async) === RootView.MUSIC"
+          (click)="setView(RootView.MUSIC)"
+        >
+          {{ 'COMPONENT.ROOT.MUSIC' | transloco }}
+        </button>
         <button data-style-ornament="inverted" (click)="revealPlayers()">
           <!-- See note in 'root.component.scss' for explanation -->
           <div style="position: relative;">
@@ -115,6 +122,9 @@
         data-popup="playerManager"
       >
         <app-player-manager (done)="closeView()"></app-player-manager>
+      </app-popup>
+      <app-popup *ngSwitchCase="RootView.MUSIC" data-popup="music">
+        <app-music (done)="closeView()"></app-music>
       </app-popup>
     </ng-container>
 

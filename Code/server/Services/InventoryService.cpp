@@ -11,12 +11,6 @@
 #include <Messages/NotifyEquipmentChanges.h>
 #include <Messages/DrawWeaponRequest.h>
 
-#include <Setting.h>
-namespace
-{
-Console::Setting bEnableItemDrops{"Gameplay:bEnableItemDrops", "(Experimental) Syncs dropped items by players", false};
-}
-
 InventoryService::InventoryService(World& aWorld, entt::dispatcher& aDispatcher)
     : m_world(aWorld)
 {
@@ -79,7 +73,10 @@ void InventoryService::OnInventoryChanges(const PacketEvent<RequestInventoryChan
     }
 
     auto& inventoryComponent = view.get<InventoryComponent>(*it);
-    inventoryComponent.Content.AddOrRemoveEntry(message.Item);
+    if (pOwnerComponent)
+        inventoryComponent.Content.AddOrRemoveEntry(message.Item);
+    else
+        inventoryComponent.Content.AddOrRemoveEntryClamped(message.Item);
 
     if (!message.UpdateClients && !isRemoteNpcInteraction)
         return;
@@ -88,8 +85,8 @@ void InventoryService::OnInventoryChanges(const PacketEvent<RequestInventoryChan
     notify.ServerId = message.ServerId;
     notify.OwnershipEpoch = message.OwnershipEpoch;
     notify.Item = message.Item;
-
-    notify.Drop = bEnableItemDrops && !isRemoteNpcInteraction ? message.Drop : false;
+    // Dropped items are placed in the world through the DroppedItemService, here the item only leaves the inventory.
+    notify.Drop = false;
 
     const entt::entity cOrigin = static_cast<entt::entity>(message.ServerId);
     if (!GameServer::Get()->SendToPlayersInRange(notify, cOrigin, acMessage.GetSender()))
