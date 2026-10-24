@@ -603,6 +603,8 @@ void CharacterService::OnDialogueRequest(const PacketEvent<DialogueRequest>& acM
     NotifyDialogue notify{};
     notify.ServerId = message.ServerId;
     notify.SoundFilename = message.SoundFilename;
+    notify.SceneId = message.SceneId;
+    notify.ScenePhase = message.ScenePhase;
 
     const entt::entity cEntity = static_cast<entt::entity>(message.ServerId);
     if (!GameServer::Get()->SendToPlayersInRange(notify, cEntity, acMessage.GetSender()))
@@ -616,6 +618,8 @@ void CharacterService::OnSubtitleRequest(const PacketEvent<SubtitleRequest>& acM
     NotifySubtitle notify{};
     notify.ServerId = message.ServerId;
     notify.Text = message.Text;
+    notify.SceneId = message.SceneId;
+    notify.ScenePhase = message.ScenePhase;
 
     const entt::entity cEntity = static_cast<entt::entity>(message.ServerId);
     if (!GameServer::Get()->SendToPlayersInRange(notify, cEntity, acMessage.GetSender()))
