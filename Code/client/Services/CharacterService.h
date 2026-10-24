@@ -57,7 +57,7 @@ struct CharacterService
 
     static void DeleteTempActor(const uint32_t aFormId) noexcept;
 
-    bool RequestOwnership(uint32_t aFormId, uint32_t aServerId, entt::entity aEntity) const noexcept;
+    bool RequestOwnership(uint32_t aFormId, uint32_t aServerId, entt::entity aEntity, bool aQuestPull = false) const noexcept;
 
     void OnActorAdded(const ActorAddedEvent& acEvent) noexcept;
     void OnActorRemoved(const ActorRemovedEvent& acEvent) noexcept;
@@ -109,6 +109,7 @@ private:
     void RunSpawnUpdates() const noexcept;
     void RunExperienceUpdates() noexcept;
     void ApplyCachedWeaponDraws(const UpdateEvent& acUpdateEvent) noexcept;
+    void RunQuestPullBackoffs() noexcept;
 
     World& m_world;
     entt::dispatcher& m_dispatcher;
@@ -135,6 +136,23 @@ private:
     // Actor form ID -> pick form ID. The active stage lives in ActorExtension.
     // Written from const message handlers, drained by ProcessLeveledConforms.
     mutable Map<uint32_t, uint32_t> m_pendingLeveledConforms{};
+
+    // A quest follower such as Mercer Frey is placed next to the player by every client running the quest. Moving it to
+    // its owner unloads it here, the quest places it back and it is rediscovered, forever. Such an actor is claimed instead.
+    struct QuestPullTracker
+    {
+        std::chrono::steady_clock::time_point MovedAwayAt{};
+        std::chrono::steady_clock::time_point FirstBounceAt{};
+        uint32_t Bounces = 0;
+        std::chrono::steady_clock::time_point ClaimedAt{};
+        // When claiming does not settle it, for instance because both clients pull it, stop syncing it for a while.
+        std::chrono::steady_clock::time_point BackoffUntil{};
+        std::chrono::seconds Backoff{};
+        bool Deferred = false;
+    };
+
+    // Actor form ID -> tracker.
+    mutable Map<uint32_t, QuestPullTracker> m_questPulls{};
 
     entt::scoped_connection m_referenceAddedConnection;
     entt::scoped_connection m_referenceRemovedConnection;
